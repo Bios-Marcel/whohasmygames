@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
+	"github.com/Bios-Marcel/whohasmygames/api"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -17,8 +18,8 @@ const steamAccountIdKey = "steam-account-id"
 func main() {
 	a := app.NewWithID("me.marcelschr.whohasmygames")
 
-	apiToken := a.Preferences().String(steamApiTokenKey)
-	accountId := a.Preferences().String(steamAccountIdKey)
+	apiToken := getAPIToken(a)
+	accountId := getTargetAccountId(a)
 
 	window := a.NewWindow("Who Has My Games?")
 	window.CenterOnScreen()
@@ -50,33 +51,33 @@ func transitionToMainScreen(a fyne.App, window fyne.Window) {
 
 type mainScreen struct {
 	container *fyne.Container
-	session   *Session
+	session   api.Session
 
-	profiles              map[steamID]*playerProfile
-	sourceFriends         []*friend
-	filteredSourceFriends []*friend
-	targetFriends         []*friend
+	profiles              map[api.SteamID]*api.PlayerProfile
+	sourceFriends         []*api.Friend
+	filteredSourceFriends []*api.Friend
+	targetFriends         []*api.Friend
 }
 
 func readyMainScreen(a fyne.App, mainScreen *mainScreen) {
-	session, err := NewSession(a.Preferences().String(steamApiTokenKey), steamID(a.Preferences().String(steamAccountIdKey)))
+	session, err := api.NewSession(getAPIToken(a), api.SteamID(getTargetAccountId(a)))
 	if err != nil {
 		panic(err)
 	}
 
-	sourceFriends, friendsErr := session.getOwnFriends()
+	sourceFriends, friendsErr := session.GetOwnFriends()
 	if friendsErr != nil {
 		panic(friendsErr)
 	}
 
-	profiles, profileError := session.getFriendProfiles(sourceFriends)
+	profiles, profileError := session.GetFriendProfiles(sourceFriends)
 	if profileError != nil {
 		panic(profileError)
 	}
 
 	mainScreen.profiles = profiles
 	mainScreen.sourceFriends = sourceFriends
-	mainScreen.filteredSourceFriends = make([]*friend, len(sourceFriends))
+	mainScreen.filteredSourceFriends = make([]*api.Friend, len(sourceFriends))
 	copy(mainScreen.filteredSourceFriends, mainScreen.sourceFriends)
 	mainScreen.targetFriends = nil
 	mainScreen.session = session
@@ -146,8 +147,8 @@ func initAndSetMainScreen(window fyne.Window, a fyne.App) *mainScreen {
 	confirmButton := widget.NewButton("Tell me", func() {
 		gamesYouAllOwnText.Text = ""
 
-		selfAsFriend := &friend{SteamID: steamID(a.Preferences().String(steamAccountIdKey))}
-		ownedGames, err := mainScreen.session.getOwnedGames(append(mainScreen.targetFriends, selfAsFriend), false)
+		selfAsFriend := &api.Friend{SteamID: api.SteamID(getTargetAccountId(a))}
+		ownedGames, err := mainScreen.session.GetOwnedGames(append(mainScreen.targetFriends, selfAsFriend), false)
 		if err != nil {
 			panic(err)
 		}
@@ -234,7 +235,7 @@ func createLoginContainer(app fyne.App, afterSave func()) *fyne.Container {
 	return container.NewBorder(
 		nil,
 		widget.NewButton("Save", func() {
-			targetAccountId, err := getSteamID(apiKeyEntry.Text, accountIdEntry.Text)
+			targetAccountId, err := api.GetSteamID(apiKeyEntry.Text, accountIdEntry.Text)
 			if err != nil {
 				//FIXME Better error handling
 				panic(err)

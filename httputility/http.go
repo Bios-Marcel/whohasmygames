@@ -1,18 +1,11 @@
-package main
+package httputility
 
 import (
 	"io/ioutil"
 	"net/http"
 )
 
-func min(a, b int) int {
-	if a <= b {
-		return a
-	}
-	return b
-}
-
-func responseToString(response *http.Response) string {
+func ResponseToString(response *http.Response) string {
 	bodyBytes, err := ioutil.ReadAll(response.Body)
 	if err != nil {
 		panic(err)
@@ -20,7 +13,7 @@ func responseToString(response *http.Response) string {
 	return string(bodyBytes)
 }
 
-func makeGetRequest(url string) (*http.Request, error) {
+func MakeGetRequest(url string) (*http.Request, error) {
 	request, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
