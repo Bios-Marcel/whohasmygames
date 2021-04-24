@@ -147,7 +147,7 @@ func initAndSetMainScreen(window fyne.Window, a fyne.App) *mainScreen {
 		gamesYouAllOwnText.Text = ""
 
 		selfAsFriend := &friend{SteamID: steamID(a.Preferences().String(steamAccountIdKey))}
-		ownedGames, err := mainScreen.session.getOwnedGames(append(mainScreen.targetFriends, selfAsFriend))
+		ownedGames, err := mainScreen.session.getOwnedGames(append(mainScreen.targetFriends, selfAsFriend), false)
 		if err != nil {
 			panic(err)
 		}

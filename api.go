@@ -12,12 +12,15 @@ import (
 type Session struct {
 	apiToken        string
 	targetAccountId steamID
+
+	ownedGamesCache map[steamID][]*ownedGame
 }
 
 func NewSession(apiToken string, targetAccountId steamID) (*Session, error) {
 	return &Session{
 		apiToken:        apiToken,
 		targetAccountId: targetAccountId,
+		ownedGamesCache: make(map[steamID][]*ownedGame),
 	}, nil
 }
 
@@ -38,13 +41,23 @@ type ownedGame struct {
 	Name  string `json:"name"`
 }
 
-func (session *Session) getOwnedGames(friends []*friend) (map[steamID][]*ownedGame, error) {
+func (session *Session) getOwnedGames(friends []*friend, forceRefresh bool) (map[steamID][]*ownedGame, error) {
 	waitgroup := &sync.WaitGroup{}
 	waitgroup.Add(len(friends))
 
 	ownedGames := make(map[steamID][]*ownedGame, len(friends))
 	for _, tempFren := range friends {
 		fren := tempFren
+
+		if !forceRefresh {
+			cachedOwnedGames, avail := session.ownedGamesCache[fren.SteamID]
+			if avail && cachedOwnedGames != nil {
+				ownedGames[fren.SteamID] = cachedOwnedGames
+				waitgroup.Done()
+				continue
+			}
+		}
+
 		go func() {
 			url := fmt.Sprintf("https://api.steampowered.com/IPlayerService/GetOwnedGames/v1?key=%s&include_played_free_games=true&include_appinfo=true&steamid=%s", session.apiToken, fren.SteamID)
 			request, err := makeGetRequest(url)
@@ -64,6 +77,7 @@ func (session *Session) getOwnedGames(friends []*friend) (map[steamID][]*ownedGa
 			}
 
 			ownedGames[fren.SteamID] = ownedGamesResponse.Response.Games
+			session.ownedGamesCache[fren.SteamID] = ownedGamesResponse.Response.Games
 			waitgroup.Done()
 		}()
 	}
