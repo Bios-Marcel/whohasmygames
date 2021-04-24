@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type Session struct {
@@ -38,27 +39,36 @@ type ownedGame struct {
 }
 
 func (session *Session) getOwnedGames(friends []*friend) (map[steamID][]*ownedGame, error) {
+	waitgroup := &sync.WaitGroup{}
+	waitgroup.Add(len(friends))
+
 	ownedGames := make(map[steamID][]*ownedGame, len(friends))
-	for _, fren := range friends {
-		url := fmt.Sprintf("https://api.steampowered.com/IPlayerService/GetOwnedGames/v1?key=%s&include_played_free_games=true&include_appinfo=true&steamid=%s", session.apiToken, fren.SteamID)
-		request, err := makeGetRequest(url)
-		if err != nil {
-			return nil, err
-		}
+	for _, tempFren := range friends {
+		fren := tempFren
+		go func() {
+			url := fmt.Sprintf("https://api.steampowered.com/IPlayerService/GetOwnedGames/v1?key=%s&include_played_free_games=true&include_appinfo=true&steamid=%s", session.apiToken, fren.SteamID)
+			request, err := makeGetRequest(url)
+			if err != nil {
+				return
+			}
 
-		result, err := http.DefaultClient.Do(request)
-		if err != nil {
-			return nil, err
-		}
+			result, err := http.DefaultClient.Do(request)
+			if err != nil {
+				return
+			}
 
-		ownedGamesResponse := &ownedGamesResponse{}
-		decodeError := json.NewDecoder(result.Body).Decode(ownedGamesResponse)
-		if decodeError != nil {
-			return nil, decodeError
-		}
+			ownedGamesResponse := &ownedGamesResponse{}
+			decodeError := json.NewDecoder(result.Body).Decode(ownedGamesResponse)
+			if decodeError != nil {
+				return
+			}
 
-		ownedGames[fren.SteamID] = ownedGamesResponse.Response.Games
+			ownedGames[fren.SteamID] = ownedGamesResponse.Response.Games
+			waitgroup.Done()
+		}()
 	}
+
+	waitgroup.Wait()
 
 	return ownedGames, nil
 }
