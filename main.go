@@ -1,12 +1,14 @@
 package main
 
 import (
-	"log"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 const steamApiTokenKey = "steam-api-token"
@@ -24,17 +26,39 @@ func main() {
 
 	if apiToken == "" || accountId == "" {
 		loginContainer := createLoginContainer(a, func() {
-			window.SetContent(initAndSetMainScreen(window, a))
+			transitionToMainScreen(a, window)
 		})
+
 		window.SetContent(loginContainer)
 	} else {
-		window.SetContent(initAndSetMainScreen(window, a))
+		transitionToMainScreen(a, window)
 	}
 
 	window.ShowAndRun()
 }
 
-func initAndSetMainScreen(window fyne.Window, a fyne.App) fyne.Widget {
+func transitionToMainScreen(a fyne.App, window fyne.Window) {
+	mainScreen := initAndSetMainScreen(window, a)
+	mainTab := container.NewTabItem("Main", mainScreen.container)
+	settingsTab := container.NewTabItem("Settings", createLoginContainer(a, func() {
+		readyMainScreen(a, mainScreen)
+		mainScreen.container.Refresh()
+	}))
+	tabPane := container.NewAppTabs(mainTab, settingsTab)
+	window.SetContent(tabPane)
+}
+
+type mainScreen struct {
+	container *fyne.Container
+	session   *Session
+
+	profiles              map[steamID]*playerProfile
+	sourceFriends         []*friend
+	filteredSourceFriends []*friend
+	targetFriends         []*friend
+}
+
+func readyMainScreen(a fyne.App, mainScreen *mainScreen) {
 	session, err := NewSession(a.Preferences().String(steamApiTokenKey), steamID(a.Preferences().String(steamAccountIdKey)))
 	if err != nil {
 		panic(err)
@@ -44,44 +68,29 @@ func initAndSetMainScreen(window fyne.Window, a fyne.App) fyne.Widget {
 	if friendsErr != nil {
 		panic(friendsErr)
 	}
-	log.Printf("Friends: %d", len(sourceFriends))
 
 	profiles, profileError := session.getFriendProfiles(sourceFriends)
 	if profileError != nil {
 		panic(profileError)
 	}
-	log.Printf("Profiles: %d", len(profiles))
 
-	// sourceFriends := []*friend{{SteamID: 123}, {SteamID: 345}, {SteamID: 678}, {SteamID: 910}}
-	// profiles := map[steamID]*playerProfile{
-	// 	123: {
-	// 		SteamID:     123,
-	// 		Personaname: "Kevin (123)",
-	// 		AvatarURL:   "NOPE",
-	// 	},
-	// 	345: {
-	// 		SteamID:     345,
-	// 		Personaname: "Kevin (345)",
-	// 		AvatarURL:   "NOPE",
-	// 	},
-	// 	678: {
-	// 		SteamID:     678,
-	// 		Personaname: "Kevin (678)",
-	// 		AvatarURL:   "NOPE",
-	// 	},
-	// 	910: {
-	// 		SteamID:     910,
-	// 		Personaname: "Kevin (910)",
-	// 		AvatarURL:   "NOPE",
-	// 	},
-	// }
+	mainScreen.profiles = profiles
+	mainScreen.sourceFriends = sourceFriends
+	mainScreen.filteredSourceFriends = make([]*friend, len(sourceFriends))
+	copy(mainScreen.filteredSourceFriends, mainScreen.sourceFriends)
+	mainScreen.targetFriends = nil
+	mainScreen.session = session
+}
 
-	var targetFriends []*friend
+func initAndSetMainScreen(window fyne.Window, a fyne.App) *mainScreen {
+	mainScreen := &mainScreen{}
+	readyMainScreen(a, mainScreen)
+
 	var targetFriendsList *widget.List
 
 	sourceFriendsList := widget.NewList(
 		func() int {
-			return len(sourceFriends)
+			return len(mainScreen.filteredSourceFriends)
 		},
 
 		func() fyne.CanvasObject {
@@ -92,21 +101,21 @@ func initAndSetMainScreen(window fyne.Window, a fyne.App) fyne.Widget {
 			button := obj.(*widget.Button)
 			button.OnTapped = func() {
 				//Avoiding adding the same friend twice.
-				for _, friend := range targetFriends {
-					if friend == sourceFriends[id] {
+				for _, friend := range mainScreen.targetFriends {
+					if friend == mainScreen.filteredSourceFriends[id] {
 						return
 					}
 				}
 
-				targetFriends = append(targetFriends, sourceFriends[id])
+				mainScreen.targetFriends = append(mainScreen.targetFriends, mainScreen.filteredSourceFriends[id])
 				targetFriendsList.Refresh()
 			}
-			button.SetText(profiles[sourceFriends[id].SteamID].Personaname)
+			button.SetText(mainScreen.profiles[mainScreen.filteredSourceFriends[id].SteamID].Personaname)
 		})
 
 	targetFriendsList = widget.NewList(
 		func() int {
-			return len(targetFriends)
+			return len(mainScreen.targetFriends)
 		},
 
 		func() fyne.CanvasObject {
@@ -117,8 +126,8 @@ func initAndSetMainScreen(window fyne.Window, a fyne.App) fyne.Widget {
 			button := obj.(*widget.Button)
 			button.OnTapped = func() {
 				targetIndex := -1
-				for index, friend := range targetFriends {
-					if friend == targetFriends[id] {
+				for index, friend := range mainScreen.targetFriends {
+					if friend == mainScreen.targetFriends[id] {
 						targetIndex = index
 						break
 					}
@@ -126,11 +135,11 @@ func initAndSetMainScreen(window fyne.Window, a fyne.App) fyne.Widget {
 				}
 
 				if targetIndex != -1 {
-					targetFriends = append(targetFriends[:targetIndex], targetFriends[targetIndex+1:]...)
+					mainScreen.targetFriends = append(mainScreen.targetFriends[:targetIndex], mainScreen.targetFriends[targetIndex+1:]...)
 					targetFriendsList.Refresh()
 				}
 			}
-			button.SetText(profiles[targetFriends[id].SteamID].Personaname)
+			button.SetText(mainScreen.profiles[mainScreen.targetFriends[id].SteamID].Personaname)
 		})
 
 	gamesYouAllOwnText := widget.NewLabel("")
@@ -138,7 +147,7 @@ func initAndSetMainScreen(window fyne.Window, a fyne.App) fyne.Widget {
 		gamesYouAllOwnText.Text = ""
 
 		selfAsFriend := &friend{SteamID: steamID(a.Preferences().String(steamAccountIdKey))}
-		ownedGames, err := session.getOwnedGames(append(targetFriends, selfAsFriend))
+		ownedGames, err := mainScreen.session.getOwnedGames(append(mainScreen.targetFriends, selfAsFriend))
 		if err != nil {
 			panic(err)
 		}
@@ -173,18 +182,48 @@ func initAndSetMainScreen(window fyne.Window, a fyne.App) fyne.Widget {
 		gamesYouAllOwnText.Refresh()
 	})
 
-	return container.NewVSplit(
-		container.NewHSplit(
-			sourceFriendsList,
-			targetFriendsList,
-		),
-		container.NewVSplit(
-			confirmButton,
-			container.NewVScroll(
-				gamesYouAllOwnText,
-			),
-		),
+	sourceFriendsSearchField := widget.NewEntry()
+	sourceFriendsSearchField.PlaceHolder = "Type to search"
+	lowercaser := cases.Lower(language.English)
+	sourceFriendsSearchField.OnChanged = func(filterValue string) {
+		lowercased := lowercaser.String(filterValue)
+		mainScreen.filteredSourceFriends = mainScreen.filteredSourceFriends[:cap(mainScreen.filteredSourceFriends)]
+		if lowercased == "" {
+			for index, fren := range mainScreen.sourceFriends {
+				mainScreen.filteredSourceFriends[index] = fren
+			}
+		} else {
+			var index int
+			for _, fren := range mainScreen.sourceFriends {
+				profile, avail := mainScreen.profiles[fren.SteamID]
+				if avail && strings.Contains(lowercaser.String(profile.Personaname), lowercased) {
+					mainScreen.filteredSourceFriends[index] = fren
+					index++
+				}
+			}
+			mainScreen.filteredSourceFriends = mainScreen.filteredSourceFriends[:index]
+		}
+
+		sourceFriendsList.Refresh()
+	}
+
+	sourceFriendsWithSearch := container.NewBorder(sourceFriendsSearchField, nil, nil, nil, sourceFriendsList)
+
+	friendsSplitter := container.NewHSplit(
+		sourceFriendsWithSearch,
+		targetFriendsList,
 	)
+	resultScrollText := container.NewVScroll(
+		gamesYouAllOwnText,
+	)
+
+	layout := NewPrioVBoxLayout()
+	layout.SetGrow(friendsSplitter, true)
+	layout.SetGrow(resultScrollText, true)
+
+	mainScreen.container = container.New(layout, friendsSplitter, confirmButton, resultScrollText)
+
+	return mainScreen
 }
 
 func createLoginContainer(app fyne.App, afterSave func()) *fyne.Container {
