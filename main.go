@@ -214,11 +214,24 @@ func initAndSetMainScreen(window fyne.Window, a fyne.App) *mainScreen {
 		sourceFriendsList.Refresh()
 	}
 
+	clearTargetFriendsButton := widget.NewButton("Clear", func() {
+		mainScreen.targetFriends = nil
+		targetFriendsList.Refresh()
+	})
+
 	sourceFriendsWithSearch := container.NewBorder(sourceFriendsSearchField, nil, nil, nil, sourceFriendsList)
+
+	targetFriendsListContainerLayout := NewPrioVBoxLayout()
+	targetFriendsListContainerLayout.SetGrow(targetFriendsList, true)
+
+	targetFriendsListContainer := container.New(targetFriendsListContainerLayout,
+		container.NewHBox(clearTargetFriendsButton),
+		widget.NewSeparator(),
+		targetFriendsList)
 
 	friendsSplitter := container.NewHSplit(
 		sourceFriendsWithSearch,
-		targetFriendsList,
+		targetFriendsListContainer,
 	)
 	resultScrollText := container.NewVScroll(
 		gamesYouAllOwnText,
