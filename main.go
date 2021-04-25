@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 	"github.com/Bios-Marcel/whohasmygames/api"
+	"github.com/Bios-Marcel/whohasmygames/stringutility"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -143,9 +144,16 @@ func initAndSetMainScreen(window fyne.Window, a fyne.App) *mainScreen {
 			button.SetText(mainScreen.profiles[mainScreen.targetFriends[id].SteamID].Personaname)
 		})
 
-	gamesYouAllOwnText := widget.NewLabel("")
+	gamesYouAllOwnText := widget.NewMultiLineEntry()
+
 	confirmButton := widget.NewButton("Tell me", func() {
-		gamesYouAllOwnText.Text = ""
+		stringJoiner := stringutility.NewStringJoiner('\n')
+		//Makes sure to update the text after we done. Whether the text is
+		//empty (failure or no common games) or we actually found games.
+		defer func() {
+			gamesYouAllOwnText.SetText(stringJoiner.String())
+			gamesYouAllOwnText.Refresh()
+		}()
 
 		selfAsFriend := &api.Friend{SteamID: api.SteamID(getTargetAccountId(a))}
 		ownedGames, err := mainScreen.session.GetOwnedGames(append(mainScreen.targetFriends, selfAsFriend), false)
@@ -160,7 +168,7 @@ func initAndSetMainScreen(window fyne.Window, a fyne.App) *mainScreen {
 
 		FREN_LOOP:
 			for friendSteamId, friendsOwnedGames := range ownedGames {
-				//Avoid checking self
+				//Avoid checking self, the result is obvious ;)
 				if selfAsFriend.SteamID == friendSteamId {
 					continue
 				}
@@ -177,10 +185,8 @@ func initAndSetMainScreen(window fyne.Window, a fyne.App) *mainScreen {
 			}
 
 			//We all got the game!
-			gamesYouAllOwnText.Text = gamesYouAllOwnText.Text + "\n" + ownOwnedGame.Name
+			stringJoiner.WriteString(ownOwnedGame.Name)
 		}
-
-		gamesYouAllOwnText.Refresh()
 	})
 
 	sourceFriendsSearchField := widget.NewEntry()
