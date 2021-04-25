@@ -224,11 +224,15 @@ func initAndSetMainScreen(window fyne.Window, a fyne.App) *mainScreen {
 		gamesYouAllOwnText,
 	)
 
+	copyResultTextButton := widget.NewButton("Copy Result", func() {
+		window.Clipboard().SetContent(gamesYouAllOwnText.Text)
+	})
+
 	layout := NewPrioVBoxLayout()
 	layout.SetGrow(friendsSplitter, true)
 	layout.SetGrow(resultScrollText, true)
 
-	mainScreen.container = container.New(layout, friendsSplitter, confirmButton, resultScrollText)
+	mainScreen.container = container.New(layout, friendsSplitter, confirmButton, resultScrollText, copyResultTextButton)
 
 	return mainScreen
 }
